@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  admin
+  manager
+}
+
+enum AuditStatus {
+  beklemede
+  devam_ediyor
+  tamamlandi
+  gecikti
+  iptal
+}
+
+enum Priority {
+  dusuk
+  orta
+  yuksek
+  kritik
+}
+
+// ==================== MODELS ====================
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  fullName  String   @map("full_name")
+  role      Role     @default(manager)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdDepartments Department[]  @relation("DepartmentCreator")
+  assignedItems      AuditItem[]   @relation("AssignedUser")
+  createdItems       AuditItem[]   @relation("ItemCreator")
+  uploadedPhotos     AuditPhoto[]  @relation("PhotoUploader")
+  auditLogs          AuditLog[]    @relation("LogChanger")
+
+  @@map("users")
+  @@index([role])
+  @@index([isActive])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdBy   String?  @map("created_by")
+  creator     User?    @relation("DepartmentCreator", fields: [createdBy], references: [id])
+  auditItems  AuditItem[]
+
+  @@map("departments")
+  @@index([isActive])
+}
+
+model Location {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  floor       String?
+  building    String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  auditItems  AuditItem[]
+
+  @@map("locations")
+  @@index([isActive])
+}
+
+model AuditItem {
+  id                       String      @id @default(cuid())
+  title                    String
+  currentStatusDescription String      @map("current_status_description") @db.Text
+  actionRequired           String      @map("action_required") @db.Text
+  status                   AuditStatus @default(beklemede)
+  priority                 Priority    @default(orta)
+  deadline                 DateTime    @db.Date
+  completionDate           DateTime?   @map("completion_date") @db.Date
+  isDeleted                Boolean     @default(false) @map("is_deleted")
+  createdAt                DateTime    @default(now()) @map("created_at")
+  updatedAt                DateTime    @updatedAt @map("updated_at")
+
+  // Foreign Keys
+  locationId             String  @map("location_id")
+  responsibleDeptId      String  @map("responsible_department_id")
+  assignedUserId         String? @map("assigned_user_id")
+  createdById            String  @map("created_by")
+
+  // Relations
+  location               Location   @relation(fields: [locationId], references: [id])
+  responsibleDepartment  Department @relation(fields: [responsibleDeptId], references: [id])
+  assignedUser           User?      @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  createdBy              User       @relation("ItemCreator", fields: [createdById], references: [id])
+  photos                 AuditPhoto[]
+  logs                   AuditLog[]
+
+  @@map("audit_items")
+  @@index([status])
+  @@index([deadline])
+  @@index([locationId])
+  @@index([responsibleDeptId])
+  @@index([assignedUserId])
+  @@index([priority])
+  @@index([isDeleted])
+}
+
+model AuditPhoto {
+  id          String   @id @default(cuid())
+  fileName    String   @map("file_name")
+  filePath    String   @map("file_path")
+  fileSize    Int      @map("file_size")
+  mimeType    String   @map("mime_type")
+  uploadedAt  DateTime @default(now()) @map("uploaded_at")
+
+  // Foreign Keys
+  auditItemId  String @map("audit_item_id")
+  uploadedById String @map("uploaded_by")
+
+  // Relations
+  auditItem    AuditItem @relation(fields: [auditItemId], references: [id], onDelete: Cascade)
+  uploadedBy   User      @relation("PhotoUploader", fields: [uploadedById], references: [id])
+
+  @@map("audit_photos")
+  @@index([auditItemId])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  fieldChanged String   @map("field_changed")
+  oldValue     String?  @map("old_value") @db.Text
+  newValue     String?  @map("new_value") @db.Text
+  changedAt    DateTime @default(now()) @map("changed_at")
+
+  // Foreign Keys
+  auditItemId String @map("audit_item_id")
+  changedById String @map("changed_by")
+
+  // Relations
+  auditItem   AuditItem @relation(fields: [auditItemId], references: [id], onDelete: Cascade)
+  changedBy   User      @relation("LogChanger", fields: [changedById], references: [id])
+
+  @@map("audit_logs")
+  @@index([auditItemId])
+  @@index([changedAt])
+}
